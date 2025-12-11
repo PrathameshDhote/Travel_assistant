@@ -119,6 +119,6 @@ travel-assistant/
 ├── requirements.txt          # Project dependencies
 └── README.md                 # Documentation
 
-![working_snippets](assests\Screenshot 2025-12-11 180414.png)
+![assests1](https://github.com/PrathameshDhote/Travel_assistant/blob/main/assests/Screenshot%202025-12-11%20180414.png)
 ![working_snippets1](assests\Screenshot 2025-12-11 180509.png)
 ![working_snippets2](assests\Screenshot 2025-12-11 180608.png)
