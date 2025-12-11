@@ -112,10 +112,11 @@ travel-assistant/
 │   │   ├── tools.py          # Mock API definitions (Wikimedia/Weather)
 │   │   └── graph_builder.py  # Graph topology & routing logic
 │   ├── vector_store/
+|   |   ├── city_data.py      # pre-populated city data
 │   │   └── setup.py          # ChromaDB initialization & distance logic
 │   └── ui/
-│   |    └── app.py            # Streamlit Frontend
-|   └── mock_apis/
+│   |    └── app.py           # Streamlit Frontend
+|   └── mock_apis/            # mock apis for weather, image and search
 |        ├── weather_api.py
 |        ├── image_api.py
 |        └── search_api.py  
