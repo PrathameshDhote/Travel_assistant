@@ -114,7 +114,11 @@ travel-assistant/
 │   ├── vector_store/
 │   │   └── setup.py          # ChromaDB initialization & distance logic
 │   └── ui/
-│       └── app.py            # Streamlit Frontend
+│   |    └── app.py            # Streamlit Frontend
+|   └── mock_apis/
+|        ├── weather_api.py
+|        ├── image_api.py
+|        └── search_api.py  
 ├── graph.png                 # Architecture visualization
 ├── requirements.txt          # Project dependencies
 └── README.md                 # Documentation
