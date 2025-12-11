@@ -1,0 +1,36 @@
+
+langchain
+langchain-openai
+langchain-core
+langgraph
+
+openai
+anthropic  # Optional: for Claude support
+
+chromadb
+qdrant-client  # Optional: alternative vector store
+
+streamlit
+streamlit-chat  # Optional: for chat UI enhancements
+
+pydantic
+pydantic-settings
+
+aiohttp
+asyncio-contextmanager
+
+plotly
+matplotlib  # Optional: fallback for charts
+
+python-dotenv  # For .env file support
+requests  # For HTTP requests in mocks
+httpx # Modern HTTP client (optional)
+
+pytest
+pytest-asyncio
+black  # Code formatter
+flake8  # Linter
+mypy  # Type checker
+
+sphinx  # Optional: for documentation generation
+sphinx-rtd-theme  # Optional: documentation theme
