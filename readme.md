@@ -14,7 +14,7 @@ It aggregates structured data (text summaries, weather forecasts, and image gall
 
 The system is built on **LangGraph**, utilizing a state machine architecture to manage context and routing.
 
-![Graph Topology](assests\Screenshot 2025-12-11 182906.png)
+![Graph Topology](graph.png)
 
 ### The Workflow
 1.  **Classify Query:** An LLM extracts the destination from natural language and sanitizes the input.
