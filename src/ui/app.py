@@ -18,11 +18,10 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import project modules
-# These imports must happen after sys.path update
 try:
     from src.vector_store.setup import populate_vector_store
     from src.graph.graph_builder import build_travel_graph
-    from src.graph.state import AgentState
+    from src.graph.state import AgentState  # kept for compatibility if you use it in graph
 except ImportError as e:
     st.error(f"Import Error: {e}. Please ensure you are running from the project root.")
     st.stop()
@@ -35,20 +34,27 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- SESSION STATE INITIALIZATION ---
+# ---------- SESSION STATE INITIALIZATION ----------
+
 def initialize_session_state():
     """Initialize Streamlit session variables for memory and history."""
     if "thread_id" not in st.session_state:
-        # Unique ID for the conversation thread (required for Checkpointer)
+        # Unique ID for the conversation thread (required for Checkpointer/MemorySaver)
         st.session_state.thread_id = f"user_{int(datetime.now().timestamp())}"
-    
+
     if "history" not in st.session_state:
         st.session_state.history = []
-        
+
     if "last_result" not in st.session_state:
         st.session_state.last_result = None
 
-# --- CACHED RESOURCES ---
+    # NEW: full chat transcript (user + assistant)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []   # each item: {"role": "user"|"assistant", "content": str}
+
+
+# ---------- CACHED RESOURCES ----------
+
 @st.cache_resource
 def get_system_resources():
     """
@@ -58,16 +64,18 @@ def get_system_resources():
     try:
         # 1. Initialize Vector Store (ChromaDB)
         client, collection = populate_vector_store()
-        
+
         # 2. Build Graph (LangGraph)
         graph = build_travel_graph(collection)
-        
+
         return graph, collection
     except Exception as e:
         st.error(f"Critical System Error: Failed to initialize resources. {e}")
         return None, None
 
-# --- ASYNC HELPER ---
+
+# ---------- ASYNC HELPER ----------
+
 async def run_graph_async(graph, inputs, config):
     """
     Asynchronous wrapper to invoke the LangGraph agent.
@@ -75,45 +83,46 @@ async def run_graph_async(graph, inputs, config):
     """
     return await graph.ainvoke(inputs, config=config)
 
-# --- UI COMPONENTS ---
+
+# ---------- UI HELPERS (YOUR ORIGINAL IMPLEMENTATION) ----------
+
 def display_weather_chart(weather_data):
     """Render an interactive Plotly line chart for weather."""
     if not weather_data:
         return
 
     try:
-        # Extract data for plotting
         dates = [d.date for d in weather_data]
         temps = [d.temperature for d in weather_data]
         conditions = [d.condition for d in weather_data]
 
-        # Create Plotly Figure
         fig = go.Figure()
-        
-        # Add Temperature Line
-        fig.add_trace(go.Scatter(
-            x=dates, 
-            y=temps,
-            mode='lines+markers',
-            name='Temperature (°C)',
-            line=dict(color='#FF4B4B', width=3),
-            marker=dict(size=8),
-            text=conditions,  # Show condition on hover
-            hovertemplate='%{y}°C - %{text}'
-        ))
-
+        fig.add_trace(
+            go.Scatter(
+                x=dates,
+                y=temps,
+                mode="lines+markers",
+                name="Temperature (°C)",
+                line=dict(color="#FF4B4B", width=3),
+                marker=dict(size=8),
+                text=conditions,
+                hovertemplate="%{y}°C - %{text}",
+            )
+        )
         fig.update_layout(
             title="7-Day Temperature Forecast",
             xaxis_title="Date",
             yaxis_title="Temperature (°C)",
             template="plotly_white",
             height=300,
-            margin=dict(l=20, r=20, t=40, b=20)
+            margin=dict(l=20, r=20, t=40, b=20),
         )
         
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, width='stretch', key=f"weather_chart_{hash(str(weather_data))}")
+        
     except Exception as e:
         st.warning(f"Could not render weather chart: {e}")
+
 
 def display_image_gallery(image_urls):
     """Render a grid of images."""
@@ -126,20 +135,18 @@ def display_image_gallery(image_urls):
         with cols[idx % len(cols)]:
             try:
                 st.image(url, width='stretch', caption=f"Image {idx+1}")
-            except:
+            except Exception:
                 st.warning("Image failed to load")
+
 
 def display_final_output(result):
     """Parse and display the Structured Output from the agent."""
-    
-    # 1. Get the structured Pydantic object from state
     final_output = result.get("final_output")
-    city_name = result.get("city_name", "Unknown City")
+    city_name = result.get("city_name", "Unknown")
     is_cache_hit = result.get("vector_store_match", False)
 
     st.divider()
-    
-    # 2. Header & Status
+
     col_header, col_status = st.columns([3, 1])
     with col_header:
         st.header(f"📍 {city_name}")
@@ -155,35 +162,36 @@ def display_final_output(result):
             st.error(f"Error Details: {result.get('error_message')}")
         return
 
-    # 3. City Summary
+    # Summary
     st.subheader("📝 Summary")
     st.markdown(final_output.city_summary)
 
-    # 4. Weather Section
+    # Weather
     if final_output.weather_forecast:
         st.subheader("🌤️ Weather Forecast")
         display_weather_chart(final_output.weather_forecast)
-    
-    # 5. Image Gallery
+
+    # Images
     if final_output.image_urls:
         display_image_gallery(final_output.image_urls)
 
-    # 6. Raw Data Expander (For debugging/verification)
+    # Raw JSON
     with st.expander("🔍 View Raw JSON Response"):
         st.json(final_output.dict())
 
-# --- MAIN APP LOGIC ---
+
+# ---------- MAIN APP (CONVERSATIONAL) ----------
+
 def main():
     initialize_session_state()
-    
-    # Check for API Key
+
+    # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
         st.warning("⚠️ OPENAI_API_KEY not found. Please set it in your .env file.")
         st.stop()
 
-    # Load System
+    # Load graph + collection
     graph, collection = get_system_resources()
-    
     if not graph:
         st.stop()
 
@@ -191,51 +199,86 @@ def main():
     with st.sidebar:
         st.header("⚙️ Control Panel")
         st.write(f"**Session ID:** `{st.session_state.thread_id}`")
-        
+
         if st.button("🧹 Clear Conversation History"):
             st.session_state.history = []
             st.session_state.last_result = None
+            st.session_state.messages = []
             st.rerun()
-            
+
         st.divider()
         st.markdown("### 🏙️ Pre-loaded Cities")
         st.caption("Try these for Cache Hits:")
         st.code("Paris\nTokyo\nNew York")
 
-    # Main Input
-    query = st.text_input("Where would you like to go?", placeholder="e.g., Tokyo, Snohomish, London...")
-    
-    if st.button("🚀 Plan Trip", type="primary") or query:
-        if not query:
-            st.warning("Please enter a city name.")
-        else:
-            with st.spinner("🤖 Agent is thinking... (Deciding between Cache vs. Web)"):
+    # Main header
+    st.title("Travel Assistant")
+    st.caption("Intelligent city information with agentic routing")
+
+    # ---------- CHAT HISTORY ----------
+    st.subheader("Chat with your Travel Assistant")
+
+    for msg in st.session_state.messages:
+        with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+            st.markdown(msg["content"])
+
+    # ---------- USER INPUT ----------
+    user_query = st.chat_input("Ask about a city (e.g., 'I want to go to Paris', then 'What is the weather?')")
+
+    if user_query:
+        # 1) Add user message to history
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        with st.chat_message("user"):
+            st.markdown(user_query)
+
+        # 2) Call graph inside assistant bubble
+        with st.chat_message("assistant"):
+            with st.spinner("🤖 Agent is thinking... (Deciding between Cache vs Web)"):
                 try:
-                    # Prepare Input State
-                    initial_state = {
-                        "messages": [HumanMessage(content=query)]
-                    }
-                    
-                    # Config for Memory (Checkpointer)
+                    # Build messages list ONLY from user turns
+                    human_messages = [
+                        HumanMessage(content=m["content"])
+                        for m in st.session_state.messages
+                        if m["role"] == "user"
+                    ]
+
+                    initial_state = {"messages": human_messages}
+
+                    # Thread id is what lets MemorySaver / checkpointer maintain context
                     config = {"configurable": {"thread_id": st.session_state.thread_id}}
-                    
-                    # --- CRITICAL FIX: EXECUTE ASYNC GRAPH ---
-                    # We use asyncio.run() to bridge Streamlit (Sync) and LangGraph (Async)
+
+                    # Async graph execution
                     result = asyncio.run(run_graph_async(graph, initial_state, config))
-                    
-                    # Update Session State
+
+                    # Update session state
                     st.session_state.last_result = result
-                    st.session_state.history.append({"query": query, "city": result.get("city_name")})
-                    
+                    st.session_state.history.append(
+                        {"query": user_query, "city": result.get("city_name")}
+                    )
+
+                    # Display structured output
+                    display_final_output(result)
+
+                    # Store a short answer back into messages for future context
+                    final_output = result.get("final_output")
+                    if final_output and getattr(final_output, "city_summary", None):
+                        assistant_text = final_output.city_summary
+                    else:
+                        assistant_text = "Done. I have updated the plan based on your request."
+
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": assistant_text}
+                    )
+
                 except Exception as e:
                     st.error(f"An error occurred during execution: {e}")
-                    # Helpful debug info
                     import traceback
                     st.code(traceback.format_exc())
 
-    # Display Result if exists
+    # Optionally, also show last structured output below chat if you want
     if st.session_state.last_result:
-        display_final_output(st.session_state.last_result)
+        st.markdown("---")
+        st.subheader("Latest Trip Plan")
 
 if __name__ == "__main__":
     main()

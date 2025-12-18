@@ -32,43 +32,60 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=500)
 
 async def node_classify_query(state: AgentState) -> AgentState:
     """
-    Extract destination name from user query and RESET previous state data.
+    Extract destination name from user query.
+    
+    DISTINCTION 3 FIX: Preserve city_name from previous turn if not mentioned.
+    This enables follow-up queries like "What is the weather?" to work.
     """
-    # 1. Clear previous search data to prevent "State Pollution"
-    # This ensures we don't show Paris weather when asking for Mexico
-    state.weather_data = []
-    state.image_urls = []
-    state.city_summary = None
-    state.final_output = None
-    state.vector_store_match = False
-    state.cache_hit = False
-
     messages = state.messages
     last_message = messages[-1].content
     
     print(f"🔍 Classifying query: {last_message[:50]}...")
     
-    # 2. Improved Prompt: Ask for "Destination" instead of just "City"
-    # This handles "Mexico", "Bali", "Japan" correctly.
+    # 1. Try to extract a city from the CURRENT message
     extraction_prompt = (
         f"Extract the destination (city, country, or region) from this query: '{last_message}'\n"
         f"Reply with ONLY the name (e.g., 'Paris', 'Mexico', 'Tokyo'). "
-        f"If no specific destination is mentioned, reply with 'Unknown'."
+        f"If no specific destination is mentioned, reply with 'None'."
     )
     
     response = await llm.ainvoke(extraction_prompt)
-    destination = response.content.strip()
+    destination = response.content.strip().strip(".").strip()
     
-    # Clean up punctuation (sometimes LLMs add periods)
-    destination = destination.strip(".").strip().title()
-    
-    # Handle "Unknown" explicitly
-    if destination.lower() == "unknown":
-        print(f"⚠️ Could not extract destination from: {last_message}")
+    # 2. CRITICAL FIX: If no city in current message, check if we have one from history
+    if destination.lower() in ["unknown", "none", ""]:
+        # Check if we already have a city_name from previous turn
+        previous_city = state.city_name
+        
+        if previous_city and previous_city != "Unknown":
+            print(f"🔄 No city in current query, reusing previous: {previous_city}")
+            destination = previous_city
+            
+            # IMPORTANT: Only clear weather/images, NOT city_name or summary
+            state.weather_data = []
+            state.image_urls = []
+            # Keep: city_name, city_summary, vector_store_match, cache_hit
+        else:
+            print(f"⚠️ Could not extract destination from: {last_message}")
+            destination = "Unknown"
+            # Clear everything for Unknown
+            state.weather_data = []
+            state.image_urls = []
+            state.city_summary = None
+            state.final_output = None
+            state.vector_store_match = False
+            state.cache_hit = False
     else:
-        print(f"✅ Extracted destination: {destination}")
+        # New city mentioned, clear previous data
+        print(f"✅ Extracted NEW destination: {destination}")
+        state.weather_data = []
+        state.image_urls = []
+        state.city_summary = None
+        state.final_output = None
+        state.vector_store_match = False
+        state.cache_hit = False
     
-    state.city_name = destination
+    state.city_name = destination.title()
     
     return state
 
